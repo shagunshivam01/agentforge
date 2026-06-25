@@ -1,6 +1,6 @@
 from mcp.server.fastmcp import FastMCP
 
-mcp=FastMCP("Weather")
+mcp=FastMCP("weather")
 
 @mcp.tool()
 async def getWeather(location: str) -> str:

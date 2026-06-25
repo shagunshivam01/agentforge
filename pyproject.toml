@@ -1,9 +1,10 @@
 [project]
-name = "agenticlanggraph"
+name = "agentforge"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP-based agent framework with tool runtime and planner system"
 readme = "README.md"
 requires-python = ">=3.12"
+
 dependencies = [
     "langchain>=0.3.26",
     "langchain-groq>=0.3.5",
@@ -14,9 +15,22 @@ dependencies = [
     "langchain-mcp-adapters>=0.1.7",
     "mcp>=1.9.4",
     "streamlit>=1.36.0",
+    "langchain-core>=0.3.68",
+    "nest-asyncio>=1.6.0",
 ]
 
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
 ]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agentforge*"]
