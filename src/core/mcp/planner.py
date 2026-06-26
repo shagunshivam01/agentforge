@@ -4,9 +4,11 @@ import json
 
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from core.memory.context import build_context
+from core.mcp.schemas import PlanOutput
 
 
 class MCPPlanner:
@@ -25,7 +27,7 @@ class MCPPlanner:
             self,
             user_input: str,
             history: list,
-            tools: list
+            tool_schemas: list
     ):
         """
         Plan the next action for the MCP runtime.
@@ -39,32 +41,11 @@ class MCPPlanner:
         - Decide whether a tool is required or if a direct response is sufficient
         - Select exactly one tool when needed
         - Provide correctly structured input for the selected tool
-
-        Output Contract (STRICT):
-        Returns a JSON object with the following schema:
-
-        {
-          "tool": "string | 'none'",
-          "input": "string | object",
-          "reason": "string explaining decision"
-        }
-
-        Rules:
-        - If no tool is needed, set tool = "none" and input = ""
-        - If a tool is selected, input MUST match that tool's expected schema
-        - Never return null values
-        - Never include extra keys outside the schema
-        - Output must be valid JSON only (no markdown, no commentary)
         """
 
         history_text = build_context(history)
 
-        tool_descriptions = "\n".join(
-            f"- {t.name}: {getattr(t, 'description', '')}"
-            for t in tools
-        )
-
-        prompt_template = """
+        prompt = f"""
 You are the PLANNING ENGINE of an MCP (Model Context Protocol) system.
 
 Your job is to decide whether the user request requires a tool call or a direct response.
@@ -72,15 +53,16 @@ Your job is to decide whether the user request requires a tool call or a direct 
 ---
 
 ## CONTEXT
+Conversation:
+{history_text}
 
-Conversation History:
-{history}
-
-Current User Message:
+User Message:
 {user_input}
 
-Available Tools:
-{tools}
+---
+
+## AVAILABLE TOOLS (STRICT SCHEMA)
+{json.dumps(tool_schemas, indent=2)}
 
 ---
 
@@ -105,90 +87,29 @@ You must follow these rules strictly:
 
 ---
 
-## TOOL INPUT RULES
-
-If you choose "tavily_search", your input MUST be:
-
-{
-  "query": "<search query>"
-}
-
-Do NOT pass plain strings.
-
----
-
-## OUTPUT RULES (VERY IMPORTANT)
-
-- Output MUST be valid JSON only
-- Do NOT include markdown
-- Do NOT include explanations outside JSON
-- Do NOT wrap output in ``` or any formatting
-- Never return null values
-- Never add extra keys
-
----
-
 ## OUTPUT FORMAT
 
-Return exactly this schema:
+Return JSON:
 
-{
-  "tool": "tavily_search | none",
-  "input": {},
+{{
+  "requires_tools": true,
+  "confidence": 0.0-1.0,
+  "tool_calls": [
+    {{
+      "name": "exact_tool_name",
+      "arguments": {{}}
+    }}
+  ],
   "reason": "short explanation"
-}
+}}
 
 ---
 
-## EXAMPLES
-
-User: hello
-Output:
-{
-  "tool": "none",
-  "input": {},
-  "reason": "greeting, no tool needed"
-}
-
-User: what is 2+2
-Output:
-{
-  "tool": "none",
-  "input": {},
-  "reason": "can be answered directly"
-}
-
-User: weather in hyderabad
-Output:
-{
-  "tool": "tavily_search",
-  "input": {
-    "query": "weather in hyderabad"
-  },
-  "reason": "requires real-time weather data"
-}
-
----
-
-Now decide the correct action.
 Return ONLY JSON.
 """
         
-        prompt = prompt_template.replace("{history}", history_text)\
-                .replace("{user_input}", user_input)\
-                .replace("{tools}", tool_descriptions)
-
-        response = await self.llm.ainvoke(prompt)
-
-        try:
-            content = response.content.strip()
-            return json.loads(content)
-        except Exception:
-            return {
-                "tool": "none",
-                "input": "",
-                "reason": "failed to parse planner output"
-            }
+        response = await self.llm.with_structured_output(PlanOutput).ainvoke(prompt)
+        return response
 
 
     async def direct_response(
@@ -237,8 +158,6 @@ Return only the response text.
 
         response = await self.llm.ainvoke(prompt)
         return response.content
-
-
 
     async def synthesize(
         self,

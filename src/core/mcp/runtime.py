@@ -13,72 +13,91 @@ class MCPRuntime:
 
     async def initialize(self):
         """
-        Connect to MCP servers
+        Initialize MCP tool registry (connect all servers)
         """
         await self.registry.initialize()
 
     async def execute(self, user_id: str, input: str):
         """
-        Main execution loop (no LangGraph, pure MCP runtime)
+        Main MCP execution loop:
+
+        1. Save user message
+        2. Build history
+        3. Plan action
+        4. Execute tool (if needed)
+        5. Synthesize response
+        6. Save assistant message
         """
-        
-        self.memory.add(
-            user_id,
-            "user",
-            input,
-        )
 
+        # MEMORY STORE
+        self.memory.add(user_id, "user", input)
+
+        # HISTORY
         history = self.memory.get(user_id)
-        tools = self.registry.get_tools()
 
-        # PLAN (decide which tool to use)
+        # TOOLS
+        tool_schemas = self.registry.get_tool_schemas()
+
+        # PLAN
         plan = await self.planner.plan(
             user_input=input,
             history=history,
-            tools=tools,
+            tool_schemas=tool_schemas,
         )
 
-        if plan["tool"] in [None, "", "none"]:
-            response = await self.planner.direct_response(input, history)
+        print("=" * 50)
+        print("PLAN")
+        print(plan)
+        print("=" * 50)
 
-            self.memory.add(
-                user_id,
-                "assistant",
-                response,
+        # DIRECT RESPONSE PATH
+        if not plan.requires_tools or len(plan.tool_calls) == 0:
+
+            response = await self.planner.direct_response(
+                user_input=input,
+                history=history,
             )
 
+            self.memory.add(user_id, "assistant", response)
             return response
 
-        tool_name = plan["tool"]
-        tool_input = plan["input"]
+        # EXECUTE TOOL CALLS
+        tool_outputs = []
 
-        tool = next(
-            (
-                t
-                for t in self.registry.get_tools()
-                if t.name == tool_name
-            ),
-            None,
-        )
+        for call in plan.tool_calls:
 
-        if not tool:
-            raise Exception(f"Tool not found: {tool_name}")
+            tool = self.registry.get(call.name)
 
-        result = await tool.ainvoke(tool_input)
+            if not tool:
+                tool_outputs.append({
+                    "error": f"Tool not found: {call.name}"
+                })
+                continue
 
-        results = [result]
+            self.telemetry.log_step(user_id, {
+                "tool": call.name,
+                "input": call.arguments,
+            })
 
-        # SYNTHESIZE FINAL RESPONSE
+            try:
+                result = await tool.ainvoke(call.arguments)
+            except Exception as e:
+                result = {
+                    "error": str(e),
+                    "tool": call.name
+                }
+
+            tool_outputs.append(result)
+
+        # SYNTHESIZE
         final_answer = await self.planner.synthesize(
             original_input=input,
-            tool_outputs=results
+            tool_outputs=[result],
+            history=history,
         )
 
-        # Save context in memory
-        self.memory.add(
-            user_id,
-            "assistant",
-            final_answer,
-        )
+        # MEMORY STORE
+        self.memory.add(user_id, "assistant", final_answer)
 
         return final_answer
+
