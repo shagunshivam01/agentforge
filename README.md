@@ -1,104 +1,434 @@
-<!-- Badges -->
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Package Manager: uv](https://img.shields.io/badge/Package%20Manager-uv-de5fe9?style=flat-square&logo=python&logoColor=white)](https://github.com/astral-sh/uv)
-[![Protocol: MCP](https://img.shields.io/badge/Protocol-MCP-orange?style=flat-square)](https://modelcontextprotocol.io/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=flat-square)](https://makeapullrequest.com)
+# AgentForge
 
-# AgentForge MCP Chatbot
+A modular Python framework for building and experimenting with LLM-powered agents.
 
-A modular **Model Context Protocol (MCP)** powered chatbot system with tool-use, planning, memory, and real-time agent execution.
+AgentForge is designed around a small set of explicit abstractions — **agents, models, memory, tools, and execution state** — so that agent architectures and infrastructure can evolve independently.
 
-It supports:
-- Tool-based reasoning (MCP servers)
-- LLM-based planning (Groq / Llama 3.1)
-- Conversation memory
-- Runtime execution engine
-- Streamlit UI
-- Extensible plugin architecture (future-ready)
+The goal is not to hide agent execution behind a large framework, but to make the execution model explicit, replaceable, and easy to experiment with.
+
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-pytest-orange?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Ruff](https://img.shields.io/badge/code%20style-Ruff-000000?logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/)
+[![uv](https://img.shields.io/badge/package%20manager-uv-de5fe9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
+
+> **Status:** Early development. The Direct agent architecture, CLI, FastAPI backend, and React web application are currently working. ReAct and additional integrations are under active development.
 
 ---
 
-## Features
+## Why AgentForge?
 
-- MCP Tool Registry (multi-server tool loading)
-- LLM Planner (decides when to use tools)
-- Runtime Execution Engine
-- Conversation Memory
-- Tavily Web Search integration
-- Structured planning output (Pydantic-based)
-- Tool normalization + safety layer
-- Streamlit Chat UI
+Agent systems often combine several concerns in a single execution layer:
+
+- agent architecture
+- LLM providers
+- tool execution
+- conversation memory
+- execution state
+- external integrations
+- application logic
+
+This can make it difficult to change one part without affecting the others.
+
+AgentForge separates these concerns so that:
+
+- new agent architectures can be added independently
+- model providers can be replaced
+- memory implementations can be replaced
+- tools can be local or externally provided
+- MCP can be used as an integration rather than defining the agent architecture
+- applications can interact with agents without knowing their internal execution strategy
+- architectures can be tested independently
+
+The guiding principle is:
+
+> **Keep the framework modular, explicit, and easy to reason about.**
 
 ---
 
 ## Architecture
 
-```bash
-+-----------------------------------+
-                  |           Streamlit UI            |
-                  +-----------------+-----------------+
-                                    |
-                                    v
-                  +-----------------+-----------------+
-                  |          Memory Layer             |
-                  +-----------------+-----------------+
-                                    |
-                                    v
-                  +-----------------+-----------------+
-                  |          LLM Planner              | <--- (Groq / Llama 3.1)
-                  +-----------------+-----------------+
-                                    |
-                     +--------------+--------------+
-                     |                             |
-                     | (Tool Needed)               | (Direct Response)
-                     v                             v
-        +------------+------------+     +----------+----------+
-        |     Runtime Engine      |     |     Synthesizer     |
-        +------------+------------+     +----------+----------+
-                     |                             ^
-       +-------------+-------------+               |
-       |  Normalized Tool Execution|               |
-       v                           v               |
-+------+------+             +------+------+        |
-| Tavily Search|            | Other MCP   |        |
-| (MCP Server) |            | Plugins     |        |
-+------+------+             +------+------+        |
-       |                           |               |
-       +-------------+-------------+               |
-                     |                             |
-                     +---(Collects Tool Output)----+
+```text
+                         APPLICATIONS
+                    ┌─────────┼─────────┐
+                    │         │         │
+                    ▼         ▼         ▼
+                  CLI      FastAPI     React
+                    │         │         │
+                    └─────────┼─────────┘
+                              ▼
+                            AGENT
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+              ARCHITECTURE            MODEL
+                    │
+                    ▼
+                  TOOLS
+                    │
+              ┌─────┴─────┐
+              ▼           ▼
+            LOCAL        MCP
+            TOOLS      ADAPTER
+                    │
+                    ▼
+                  MEMORY
 ```
----
 
-## Core Execution Flow
+The important boundary is that **agent architectures depend on framework abstractions, not on specific applications or integrations**.
 
-AgentForge handles user queries deterministically via `MCPRuntime` utilizing a centralized orchestration loop:
+For example:
 
 ```text
-[User Input] ──> MCPRuntime.execute()
-                     │
-                     ├──> 1. ConversationMemory.add() (Persist query)
-                     ├──> 2. MCPRegistry.get_tool_schemas() (Fetch capability definitions)
-                     ├──> 3. MCPPlanner.plan() (LLM decides routing approach)
-                     │
-                     ├─── [Choice A: No Tools Needed]
-                     │        └──> MCPPlanner.direct_response() ──> Synthesize Conversational Text
-                     │
-                     └─── [Choice B: Tool Execution Needed]
-                              ├──> Loop through plan.tool_calls
-                              ├──> MCPTelemetry.log_step()
-                              ├──> tool.ainvoke() (Asynchronous tool call execution)
-                              └──> MCPPlanner.synthesize() ──> Compile final data-driven answer
+ReAct
+  │
+  ├── Model
+  ├── Memory
+  └── Tool
+         ▲
+         │
+    ┌────┴────┐
+    │         │
+ Local Tool  MCP Tool
 ```
+
+ReAct should not need to know whether a tool is implemented locally or exposed through MCP.
+
+Similarly, a model implementation does not define the agent architecture.
 
 ---
 
-## Technical Design Highlights
+## Core Concepts
 
-- **Asynchronous Execution:** The entire workflow layer (`plan`, `direct_response`, `synthesize`) leverages Python `asyncio` to handle concurrent tool loading and high-throughput streaming workloads.
-- **Strict Guardrailing:** Prompts explicitly decouple general knowledge, logic, and mathematics from tool usage, reducing token waste and avoiding agent loop degradation.
-- **Deterministic Token Safety:** Using LangChain's structured orchestration guarantees your output parses safely into the underlying `PlanOutput` data model without risking loose markdown strings breaking JSON structures.
+### Agent
+
+An `Agent` is the framework-level abstraction responsible for executing a task and producing a response.
+
+```python
+class Agent(ABC):
+
+    @abstractmethod
+    async def run(
+        self,
+        message: str,
+        **kwargs: Any,
+    ) -> str:
+        ...
+```
+
+Applications interact with the `Agent` abstraction rather than depending on a specific architecture.
+
+---
+
+### Agent Architecture
+
+An architecture defines **how an agent executes a task**.
+
+Examples include:
+
+```text
+Direct
+ReAct
+Plan-and-Execute
+Reflexion
+...
+```
+
+Architectures live under:
+
+```text
+src/agentforge/agents/architectures/
+```
+
+This allows a new architecture to be introduced without modifying unrelated model, memory, tool, or MCP infrastructure.
+
+---
+
+### Direct
+
+Direct is intentionally the simplest architecture.
+
+```text
+User
+  │
+  ▼
+Agent
+  │
+  ▼
+Model
+  │
+  ▼
+Response
+```
+
+The Direct agent does not contain:
+
+- a planning loop
+- tool selection
+- multi-step reasoning
+- a complex state machine
+
+This makes Direct a useful baseline for evaluating more sophisticated architectures.
+
+**Current status:** Working end-to-end through the framework, CLI, FastAPI API, and React web application.
+
+---
+
+### ReAct
+
+ReAct implements:
+
+```text
+Reason → Act → Observe
+```
+
+Conceptually:
+
+```text
+              ┌──────────────┐
+              │     Input    │
+              └──────┬───────┘
+                     ▼
+                  Reason
+                     │
+              Tool required?
+                /         \
+              no           yes
+              │             │
+              ▼             ▼
+           Response      Tool Call
+                            │
+                            ▼
+                        Observation
+                            │
+                            └──────► Reason
+```
+
+ReAct-specific execution logic belongs under:
+
+```text
+src/agentforge/agents/architectures/react/
+```
+
+The ReAct implementation should depend on generic `Model`, `Memory`, and `Tool` abstractions rather than directly depending on MCP, a specific model provider, or an external orchestration framework.
+
+**Current status:** In development.
+
+---
+
+### Model
+
+A `Model` represents an LLM or inference provider.
+
+```python
+class Model(ABC):
+
+    @abstractmethod
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> str:
+        ...
+```
+
+Agent architectures depend on this abstraction instead of directly depending on a provider.
+
+This allows implementations such as:
+
+```text
+Model
+ ├── GroqModel
+ ├── OpenAIModel
+ ├── AnthropicModel
+ └── LocalModel
+```
+
+to be substituted without changing the agent architecture.
+
+---
+
+### Memory
+
+Memory stores and retrieves information used across conversations or executions.
+
+```python
+class Memory(ABC):
+
+    @abstractmethod
+    async def get_messages(self) -> list[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    async def add_message(
+        self,
+        role: str,
+        content: str,
+        **kwargs: Any,
+    ) -> None:
+        ...
+
+    @abstractmethod
+    async def clear(self) -> None:
+        ...
+```
+
+The initial implementation provides conversation memory.
+
+Future implementations can provide persistent or specialized storage without changing the agent architecture.
+
+---
+
+### State
+
+State represents the structured state of an **ongoing agent execution**.
+
+State is different from memory:
+
+```text
+Memory
+  → information available across conversations/executions
+
+State
+  → information belonging to the current execution
+```
+
+For example, a ReAct execution may maintain:
+
+```text
+ReactState
+├── messages
+├── current action
+├── observation
+├── iteration
+└── completion status
+```
+
+State should remain architecture-specific where appropriate.
+
+---
+
+### Tool
+
+A `Tool` represents a capability that an agent can invoke.
+
+```python
+class Tool(ABC):
+
+    @property
+    @abstractmethod
+    def schema(self) -> dict[str, Any]:
+        ...
+
+    @abstractmethod
+    async def invoke(
+        self,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+```
+
+Tools are managed through a `ToolRegistry`.
+
+```text
+ToolRegistry
+├── register
+├── unregister
+├── discover
+├── definitions
+└── invoke
+```
+
+The agent architecture interacts with the generic `Tool` abstraction rather than the implementation details of an individual tool.
+
+---
+
+## MCP
+
+Model Context Protocol (MCP) is treated as an **integration mechanism**, not as an agent architecture.
+
+The intended relationship is:
+
+```text
+Agent Architecture
+        │
+        ▼
+   Tool Abstraction
+        ▲
+        │
+   MCP Adapter
+        │
+        ▼
+   MCP Servers
+```
+
+This means MCP should not determine whether an agent uses Direct, ReAct, Plan-and-Execute, or another architecture.
+
+A tool can be provided by:
+
+```text
+Local implementation
+        or
+MCP server
+```
+
+while exposing the same framework-level tool contract to the agent.
+
+The repository currently contains example MCP services under:
+
+```text
+services/mcp/
+├── math/
+├── tavily/
+└── weather/
+```
+
+The framework-side MCP integration is kept separate from these services.
+
+---
+
+## Applications
+
+AgentForge currently includes a chatbot application with multiple interfaces:
+
+```text
+apps/chatbot/
+├── api/
+│   ├── dependencies.py
+│   ├── main.py
+│   ├── routes.py
+│   └── schemas.py
+├── app.py
+├── cli.py
+└── runtime.py
+```
+
+### CLI
+
+The CLI provides a terminal-based interface for interacting with the agent.
+
+### FastAPI
+
+The FastAPI application exposes the agent through HTTP APIs.
+
+Interactive API documentation is available through FastAPI's generated documentation when the server is running.
+
+### React
+
+The React application provides a web-based chatbot interface:
+
+```text
+apps/chatbot-web/
+├── src/
+│   ├── App.jsx
+│   ├── api.js
+│   ├── index.css
+│   └── main.jsx
+└── ...
+```
+
+These applications consume the framework rather than defining agent architecture themselves.
 
 ---
 
@@ -106,198 +436,415 @@ AgentForge handles user queries deterministically via `MCPRuntime` utilizing a c
 
 ```text
 .
-├── experiments/                 # Jupyter notebooks for prototyping & research
-│   └── basic-chatbot/
-├── services/                    # Out-of-process MCP Server definitions
+├── apps/
+│   ├── chatbot/
+│   │   ├── api/
+│   │   ├── app.py
+│   │   ├── cli.py
+│   │   └── runtime.py
+│   └── chatbot-web/
+│       └── src/
+│
+├── services/
 │   └── mcp/
-│       ├── math/                # Math execution MCP server
-│       ├── tavily/              # Search engine integration MCP server
-│       └── weather/             # Live weather data MCP server
-├── src/                         # Core AgentForge package
+│       ├── math/
+│       ├── tavily/
+│       └── weather/
+│
+├── experiments/
+│   └── basic-chatbot/
+│
+├── src/
+│   └── agentforge/
+│       ├── agents/
+│       │   ├── base.py
+│       │   └── architectures/
+│       │       ├── direct/
+│       │       └── react/
+│       │
+│       ├── models/
+│       │
+│       ├── memory/
+│       │
+│       ├── tools/
+│       │
+│       ├── mcp/
+│       │
+│       └── infrastructure/
+│
+├── tests/
+│   ├── agents/
 │   ├── apps/
-│   │   └── chatbot/             # Chatbot UI application
-│   │       ├── api/             # FastAPI / API server layers
-│   │       └── ui/              # Streamlit frontend application
-│   └── core/                    # Engine internals
-│       ├── mcp/                 # Protocol, planner, tool registry, and runtime execution
-│       ├── memory/              # Context tracking & conversation history layers
-│       ├── types/               # Strong typing and schema definitions
-│       └── config.py            # Global runtime configuration
-├── pyproject.toml               # Project metadata and build dependencies
-└── uv.lock                      # Deterministic lockfile managed by uv
+│   ├── memory/
+│   └── tools/
+│
+├── pyproject.toml
+├── README.md
+└── uv.lock
 ```
+
+### Package responsibilities
+
+| Package | Responsibility |
+|---|---|
+| `agents/` | Agent contracts and execution architectures |
+| `models/` | LLM/model abstractions and implementations |
+| `memory/` | Conversation and persistent context |
+| `tools/` | Capability abstractions and tool registry |
+| `mcp/` | MCP protocol/runtime/integration |
+| `infrastructure/` | Cross-cutting concerns |
+| `apps/` | Application-specific interfaces and composition |
+| `services/` | External services such as MCP servers |
+| `tests/` | Automated tests |
+| `experiments/` | Research and experimentation |
+
+Applications should consume the framework rather than implement framework logic.
 
 ---
 
-## How It Works
+## Getting Started
 
-### 1. User Input
-User sends a message via Streamlit UI.
-
-### 2. Memory Layer
-Stores conversation history per user.
-
-### 3. Planner (LLM)
-Decides whether the current prompt requires external execution or direct text generation using LangChain's structured output bindings.
-
-Output:
-```json
-{
-  "requires_tools": true,
-  "confidence": 0.85,
-  "tool_calls": [
-    {
-      "name": "exact_tool_name",
-      "arguments": {}
-    }
-  ],
-  "reason": "..."
-}
-```
-
-### 4. Runtime Engine
-Normalizes tool input
-Executes MCP tool
-Collects result
-Handles fallback errors
-
-### 5. Synthesizer
-Converts tool output into final natural response.
-
-### MCP Tools
-Tavily Search
-Used for:
-- Weather
-- News
-- Live data
-- Real-time queries
-
-### Planner Rules
-- No tools for greetings
-- No tools for math/general reasoning
-- Tools only for real-time / external data
-
----
-
-## Project Setup
-
-### Prerequisites
-- **Python:** 3.10 or higher
-- **Package Manager:** `uv` (recommended) or `pip`
-- [Groq API Key](https://console.groq.com/)
-- [Tavily API Key](https://tavily.com/)
-
-### Installation
+AgentForge uses `uv` for dependency and environment management.
 
 ```bash
-git clone git@github.com:shagunshivam01/agentforge.git
+git clone <repository-url>
 cd agentforge
 
-uv venv
-source .venv/bin/activate
-
-uv pip install -r requirements.txt
+uv sync --dev
 ```
 
-### Environment Variables
-
-Create .env:
-GROQ_API_KEY=your_key_here
-TAVILY_API_KEY=your_key_here
-
-### Run MCP Server (Tavily)
+Verify the environment:
 
 ```bash
-python services/mcp/tavily/server.py
-```
-
-### Run Chatbot UI
-
-```bash
-streamlit run src/apps/chatbot/ui/streamlit_app.py
-```
-
-### Example Queries
-
-Direct response
-- hello
-
-Tool usage
-- weather in san francisco
-- Real-time data
-- latest AI news
-
-### Known Issues
-
-- Planner may over-trigger tools in ambiguous queries
-- MCP server loading errors may occur if endpoint is down
-- Tool schema enforcement still evolving
-- No persistent vector memory yet
-
-The LLM should decide what to do, not do everything itself. Execution should be deterministic, safe, and modular.
-
----
-
-## How to Add a New MCP Tool
-
-### Extending the System: Adding New MCP Tools
-
-AgentForge is built to be modular. To add a new tool:
-
-1. **Create the Server:** Add a new directory under `src/services/mcp/[your_tool]/` and implement the MCP protocol interface.
-2. **Register the Tool:** Add the tool definitions and schemas to the `MCP Tool Registry`.
-3. **Update the Planner:** If necessary, update the Pydantic schema or prompt guidelines in the LLM Planner to ensure it knows when to invoke your new tool.
-
-### Planner Schema
-
-The planner strictly enforces the following Pydantic structure for deterministic routing:
-
-```python
-class ToolCall(BaseModel):
-    name: str
-    arguments: Dict[str, Any] = Field(default_factory=dict)
-
-class PlanOutput(BaseModel):
-    requires_tools: bool = False
-    confidence: float = 1.0
-    reason: str = ""
-    tool_calls: List[ToolCall] = Field(default_factory=list)
+uv run python --version
 ```
 
 ---
 
-## Contributing
+## Configuration
 
-We welcome contributions to AgentForge! Whether you want to fix a bug, optimize the planner, or add a brand new MCP server plugin, here is how you can get involved:
+Provider-specific configuration is supplied through environment variables.
 
-### How to Contribute
+Create a local `.env` file based on your environment configuration.
 
-1. **Fork the Repository:** Create your own fork of the project to your GitHub account.
-2. **Create a Feature Branch:** 
-   ```bash
-   git checkout -b feature/amazing-new-mcp-tool
-   ```
-3. **Commit Your Changes:** Write clear, concise commit messages that explain why the change was made.
-   ```bash
-   git commit -m "feat: add filesystem mcp server plugin"
-   ```
-4. **Push to the Branch:**
-    ```bash
-    git push origin feature/amazing-new-mcp-tool
-    ```
-5. **Open a Pull Request:** Submit your PR against the main branch. Please provide a clear description of the changes and reference any related issues.
+For example:
 
-### Development Guidelines
+```env
+GROQ_API_KEY=your_groq_api_key
+```
 
-- **Code Style:** We use ruff or black for formatting. Please ensure your code passes basic linting checks before submitting.
-- **Type Hints:** AgentForge relies heavily on Pydantic and type validation. Ensure all new core functions include robust Python type hinting.
-- **Testing:** If adding a new tool normalization layer or memory strategy, include corresponding unit tests under a tests/ directory.
+**Do not commit API keys or other secrets.**
+
+---
+
+## Running the Chatbot
+
+### FastAPI backend
+
+Run the API with:
+
+```bash
+uv run uvicorn apps.chatbot.api.main:app --reload
+```
+
+The API will be available at:
+
+```text
+http://localhost:8000
+```
+
+FastAPI's interactive documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+### CLI
+
+The repository also includes a CLI interface for interacting with the chatbot.
+
+Run it using the CLI entry point configured by the project.
+
+### React frontend
+
+From the web application directory:
+
+```bash
+cd apps/chatbot-web
+npm install
+npm run dev
+```
+
+The Vite development server will provide the local web interface.
+
+---
+
+## Testing
+
+Run the complete test suite:
+
+```bash
+uv run python -m pytest
+```
+
+The current test suite covers core components including:
+
+- Direct agent behavior
+- FastAPI routes
+- application runtime
+- conversation memory
+- tool registry
+
+The framework should favor deterministic tests using fake implementations where possible.
+
+For example:
+
+```text
+FakeModel
+    │
+    ▼
+DirectAgent
+    │
+    ▼
+Fake response
+```
+
+This allows agent behavior to be tested without making real LLM requests.
+
+---
+
+## Code Quality
+
+AgentForge uses Ruff for linting.
+
+Run:
+
+```bash
+uv run ruff check .
+```
+
+Automatically fix supported issues:
+
+```bash
+uv run ruff check . --fix
+```
+
+---
+
+## Development Roadmap
+
+AgentForge is being developed incrementally.
+
+### Core
+
+- [x] Agent abstraction
+- [x] Model abstraction
+- [x] Memory abstraction
+- [x] Tool abstraction
+- [x] Conversation memory
+- [x] Tool registry
+- [ ] Clean architecture boundaries
+- [ ] Expanded deterministic core tests
+
+### Agent Architectures
+
+- [x] Direct agent
+- [ ] ReAct agent
+- [ ] Plan-and-Execute
+- [ ] Reflexion
+- [ ] Architecture selection
+
+### Models
+
+- [x] Model abstraction
+- [x] Groq model implementation
+- [ ] Additional interchangeable model providers
+
+### Memory
+
+- [x] Conversation memory
+- [ ] Persistent storage
+- [ ] Pluggable memory backends
+- [ ] Context/window management
+- [ ] Long-term memory
+
+### Tools and MCP
+
+- [x] Tool abstraction
+- [x] Tool registry
+- [ ] MCP tool adapter
+- [ ] MCP tool discovery
+- [ ] MCP tool execution
+
+### Evaluation
+
+- [ ] Evaluation datasets
+- [ ] Architecture comparison
+- [ ] Latency measurements
+- [ ] Tool-use metrics
+- [ ] Cost measurements
+- [ ] Reproducible experiments
+
+### Observability
+
+- [ ] Agent execution tracing
+- [ ] Tool execution telemetry
+- [ ] Model usage metrics
+- [ ] Debugging support
+
+---
+
+## Design Principles
+
+### 1. Depend on abstractions
+
+Components should depend on stable contracts such as:
+
+```text
+Agent
+Model
+Memory
+Tool
+```
+
+rather than concrete implementations whenever practical.
+
+---
+
+### 2. Keep architectures isolated
+
+Architecture-specific behavior belongs inside:
+
+```text
+agents/architectures/
+```
+
+For example:
+
+```text
+agents/architectures/react/
+```
+
+should contain ReAct execution logic.
+
+MCP, model providers, and application code should not define the ReAct architecture.
+
+---
+
+### 3. Keep MCP independent from agent architectures
+
+MCP provides capabilities.
+
+It should not own:
+
+- reasoning
+- planning
+- agent loops
+- conversation management
+- architecture selection
+
+Agent architectures consume tools through the framework's tool abstraction.
+
+---
+
+### 4. Keep applications thin
+
+Applications should expose or compose the framework rather than implement it.
+
+The desired relationship is:
+
+```text
+CLI / API / React
+       │
+       ▼
+   Application
+       │
+       ▼
+      Agent
+       │
+   ┌───┼────┐
+   ▼   ▼    ▼
+ Model Memory Tools
+```
+
+The application should not directly implement agent orchestration.
+
+---
+
+### 5. Prefer explicit components
+
+AgentForge intentionally avoids hiding the entire system behind a single framework abstraction.
+
+Agents, architectures, models, memory, tools, and integrations remain visible components.
+
+This makes the system easier to:
+
+- understand
+- test
+- replace
+- benchmark
+- experiment with
+
+---
+
+### 6. Build only what experiments require
+
+AgentForge is an experimentation framework.
+
+New abstractions should be introduced when they solve a real architectural or experimental problem, not simply because the framework may need them in the future.
+
+The objective is:
+
+```text
+Small Core
+    ↓
+Multiple Architectures
+    ↓
+Deterministic Tests
+    ↓
+Experiments
+    ↓
+Evidence
+```
+
+rather than building a large framework before there is something to evaluate.
+
+---
+
+## Current Direction
+
+The immediate development sequence is:
+
+```text
+Clean Core
+    │
+    ▼
+Direct Agent
+    │
+    ├──────────────► CLI
+    │
+    ├──────────────► FastAPI
+    │                    │
+    │                    ▼
+    │                  React
+    │
+    ▼
+ReAct Agent
+    │
+    ▼
+Deterministic Tests
+    │
+    ▼
+Architecture Evaluation
+    │
+    ▼
+Additional Architectures
+```
+
+The long-term goal is to make different agent architectures comparable while keeping the underlying model, memory, tool, and infrastructure components independently replaceable.
 
 ---
 
 ## License
 
 MIT
-
----
-
