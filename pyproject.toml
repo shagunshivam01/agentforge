@@ -1,27 +1,50 @@
 [project]
 name = "agentforge"
 version = "0.1.0"
-description = "MCP-based agent framework with tool runtime and planner system"
+description = "A modular agent runtime and evaluation framework for experimenting with agent architectures."
 readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
+    "fastapi>=0.141.1",
+    "groq>=0.29.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.1.1",
+    "uvicorn>=0.49.0",
+]
+
+[project.optional-dependencies]
+mcp = [
+    "mcp>=1.9.4",
+    "langchain-mcp-adapters>=0.1.7",
+]
+
+langchain = [
     "langchain>=0.3.26",
+    "langchain-core>=0.3.68",
     "langchain-groq>=0.3.5",
     "langchain-tavily>=0.2.7",
+]
+
+langgraph = [
     "langgraph>=0.5.1",
+]
+
+observability = [
     "langsmith>=0.4.4",
-    "python-dotenv>=1.1.1",
-    "langchain-mcp-adapters>=0.1.7",
-    "mcp>=1.9.4",
+]
+
+dashboard = [
     "streamlit>=1.36.0",
-    "langchain-core>=0.3.68",
-    "nest-asyncio>=1.6.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.12.0",
     "ipykernel>=6.29.5",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.12.0",
 ]
 
 [build-system]
@@ -34,3 +57,23 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["agentforge*"]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+]
+asyncio_mode = "strict"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+]
+
