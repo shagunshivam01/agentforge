@@ -649,7 +649,7 @@ AgentForge is being developed incrementally.
 ### Agent Architectures
 
 - [x] Direct agent
-- [ ] ReAct agent
+- [x] ReAct agent
 - [ ] Plan-and-Execute
 - [ ] Reflexion
 - [ ] Architecture selection

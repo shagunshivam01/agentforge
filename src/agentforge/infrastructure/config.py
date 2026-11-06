@@ -16,6 +16,7 @@ class Settings:
     
     groq_api_key: str
     groq_model: str
+    agent_architecture: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -29,7 +30,15 @@ class Settings:
 
         return cls(
             groq_api_key=groq_api_key,
-            groq_model="qwen/qwen3.8-27b"
+            groq_model=os.getenv(
+                "GROQ_MODEL",
+                "qwen/qwen3.8-27b",
+            ),
+            agent_architecture=os.getenv(
+                "AGENT_ARCHITECTURE",
+                "direct",
+            ),
         )
 
 settings = Settings.from_env()
+

@@ -24,6 +24,8 @@ function getSessionId() {
 function App() {
   const [sessionId] = useState(getSessionId);
 
+  const [architecture, setArchitecture] = useState("direct");
+
   const [messages, setMessages] = useState([]);
 
   const [input, setInput] = useState("");
@@ -58,6 +60,7 @@ function App() {
       const data = await sendMessage(
         sessionId,
         message,
+        architecture,
       );
 
       setMessages((current) => [
@@ -82,7 +85,19 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>AgentForge</h1>
-        <span>Direct Agent</span>
+        <span>
+          <label>
+            Architecture
+
+            <select
+              value={architecture}
+              onChange={(event) => setArchitecture(event.target.value)}
+            >
+              <option value="direct">Direct</option>
+              <option value="react">ReAct</option>
+            </select>
+          </label>
+        </span>
       </header>
 
       <main className="chat">

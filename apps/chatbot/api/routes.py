@@ -17,13 +17,17 @@ async def chat(
     request: ChatRequest,
     app: ChatbotApp = Depends(get_app),
 ) -> ChatResponse:
+    session_id=request.session_id
+    architecture=request.architecture
+
     response = await app.run(
-        session_id=request.session_id,
+        session_id=session_id,
         message=request.message,
+        architecture=architecture,
     )
 
     return ChatResponse(
-        session_id=request.session_id,
+        session_id=session_id,
         response=response,
+        architecture=architecture,
     )
-

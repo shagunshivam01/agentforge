@@ -13,11 +13,12 @@ def get_app() -> ChatbotApp:
     model = GroqModel(
         model=settings.groq_model,
         api_key=settings.groq_api_key,
+        max_completion_tokens=500,
     )
 
     runtime = ChatbotRuntime(
         model=model,
-        architecture="direct",
+        architecture=settings.agent_architecture,
     )
 
     return ChatbotApp(runtime=runtime)

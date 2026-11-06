@@ -39,7 +39,7 @@ def fake_app() -> FakeChatbotApp:
 
 @pytest.fixture
 def client(
-    fake_app: FakeChatbotApp
+    fake_app: FakeChatbotApp,
 ) -> Generator[TestClient, None, None]:
     app = create_api()
 
@@ -87,7 +87,9 @@ def test_chat_passes_session_id_to_app(
         {
             "session_id": "session-123",
             "message": "Hello",
-            "kwargs": {},
+            "kwargs": {
+                "architecture": "direct",
+            },
         }
     ]
 
@@ -105,6 +107,64 @@ def test_chat_passes_message_to_app(
     )
 
     assert fake_app.calls[0]["message"] == "What is AgentForge?"
+
+
+def test_chat_uses_direct_architecture_by_default(
+    client: TestClient,
+    fake_app: FakeChatbotApp,
+) -> None:
+    client.post(
+        "/api/chat",
+        json={
+            "session_id": "session-123",
+            "message": "Hello",
+        },
+    )
+
+    assert fake_app.calls[0]["kwargs"] == {
+        "architecture": "direct",
+    }
+
+
+def test_chat_passes_react_architecture_to_app(
+    client: TestClient,
+    fake_app: FakeChatbotApp,
+) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "session_id": "session-123",
+            "message": "What is the weather?",
+            "architecture": "react",
+        },
+    )
+
+    assert response.status_code == 200
+
+    assert fake_app.calls == [
+        {
+            "session_id": "session-123",
+            "message": "What is the weather?",
+            "kwargs": {
+                "architecture": "react",
+            },
+        }
+    ]
+
+
+def test_chat_rejects_invalid_architecture(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/chat",
+        json={
+            "session_id": "session-123",
+            "message": "Hello",
+            "architecture": "invalid",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_chat_rejects_empty_session_id(

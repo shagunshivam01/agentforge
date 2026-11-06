@@ -1,7 +1,7 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-export async function sendMessage(sessionId, message) {
+export async function sendMessage(sessionId, message, architecture) {
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: "POST",
     headers: {
@@ -10,6 +10,7 @@ export async function sendMessage(sessionId, message) {
     body: JSON.stringify({
       session_id: sessionId,
       message,
+      architecture,
     }),
   });
 
